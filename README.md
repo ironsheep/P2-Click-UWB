@@ -8,7 +8,7 @@ Propeller 2 Object for interaction with the Mikroe UWB Click Module with Demo
 
 ## UWB CLICK
 
-UWB Click is an Ultra-Wideband transceiver Click board™ that can be used in 2-way ranging or TDOA location systems to locate assets to a precision of 10 cm and supports data rates of up to 6.8 Mbps. This Click board™ features the DWM1000 module based on Decawave's DW1000 Ultra-Wideband (UWB) transceiver from [Decawave Limited](https://www.decawave.com/). It features a frequency range from 3.5GHz to 6.5GHz, a very precise location of tagged objects, up to 6.8Mbps data rates, low power consumption
+[UWB Click from Mikroe](https://www.mikroe.com/uwb-click) is an Ultra-Wideband transceiver Click board™ that can be used in 2-way ranging or TDOA location systems to locate assets to a precision of 10 cm and supports data rates of up to 6.8 Mbps. This Click board™ features the [DWM1000 module](https://www.qorvo.com/products/p/DW1000) based on Decawave's (now Qorvo's) DW1000 Ultra-Wideband (UWB) transceiver from [Decawave Limited](https://www.decawave.com/). It features a frequency range from 3.5GHz to 6.5GHz, a very precise location of tagged objects, up to 6.8Mbps data rates, low power consumption
 
 This project offers a quickly usable object specifically built for use with the Propeller 2 chip. The module is written in spin2 and pasm2 the native languages of the P2.
 

@@ -1,0 +1,161 @@
+'' =================================================================================================
+''
+''   File....... isp_uwb_click.spin2
+''   Purpose.... Interface to the Mikroe UWB Click module
+''   Authors.... Stephen M Moraco
+''               -- Copyright (c) 2022 Iron Sheep Productions, LLC
+''               -- see below for terms of use
+''   E-mail..... stephen@ironsheep.biz
+''   Started.... Apr 2022
+''   Updated.... 23 Apr 2022
+''
+'' =================================================================================================
+
+CON { public interface constants }
+
+    '  ID where the P2 Eval Motor Board is plugged in (Enum)
+    '    (Names of supported PinGroups)
+    #0[16], PINS_P0_P15, PINS_P16_P31, PINS_P32_P47
+    ' return value when user makes bad choice
+    INVALID_PIN_BASE = -1
+
+OBJ { objects / constants included by this object }
+
+
+CON { Click Module offsets }
+
+    ' specs for Click UWB board
+   CLICK_OFST_MOSI = 11    ' N/C  Mikroe pin 6 - SPI Data In
+   CLICK_OFST_MISO = 10    ' N/C  Mikroe pin 5  - SPI Data Out
+   CLICK_OFST_SCK = 9    ' N/C  Mikroe pin 4    - SPI Clock
+   CLICK_OFST_CS = 8    ' N/C  Mikroe pin 3    - SPI Chip Select
+   CLICK_OFST_RST = 7    ' N/C  Mikroe pin 2    - Reset
+   'CLICK_OFST_AN = 6    ' N/C  Mikroe pin 1
+
+   'CLICK_OFST_PWM = 5 ' N/C  Mikroe pin 16
+   CLICK_OFST_INT = 4   ' Mikroe pin 15
+   'CLICK_OFST_RX = 3 ' N/C  Mikroe pin 14
+   'CLICK_OFST_TX = 2 ' N/C  Mikroe pin 13
+   'CLICK_OFST_SCL = 1 ' N/C  Mikroe pin 12
+   'CLICK_OFST_SDA = 0 ' N/C  Mikroe pin 11
+
+CON { test pins for LA measurement }
+
+PUB null()
+
+'' This is not a top-level object
+
+DAT { object class data }
+
+    pinbase long    0
+
+PUB start(eClickBasePin) : ok | legalBase
+'' Specify motor control board connect location for this motor and start the driver
+    ' ensure we only use legal values
+    legalBase := eClickBasePin
+    CASE eClickBasePin
+        PINS_P0_P15 :
+        PINS_P16_P31 :
+        PINS_P32_P47 :
+        OTHER :
+            legalBase := INVALID_PIN_BASE
+
+    ' if legal base-pin then start cog
+    if legalBase <> INVALID_PIN_BASE
+        pinbase := legalBase        ' record base pin number
+
+PRI uwb_generic_write()
+'' Writing data to device
+    ' void uwb_generic_write ( uint8_t reg_adr, uint16_t offset, uint8_t *tx_buf, uint16_t buf_len ) - Writing data to device
+
+PRI uwb_generic_read()
+'' Reading data from device
+    ' void uwb_generic_read ( uint8_t reg_adr, uint16_t offset, uint8_t *rx_buf, uint16_t buf_len ) - Reading data from device
+
+PRI uwb_set_mode(mode)
+'' Setting device in one working mode
+    ' void uwb_set_mode ( uint8_t mode ) - Setting device in one working mode
+
+PRI uwb_get_transmit()
+'' Get received data
+    ' void uwb_get_transmit ( uint8_t *rx_buf, uint16_t len_buf ) - Get received data
+
+PRI uwb_set_transmit()
+'' Set data to transmit
+    ' void uwb_set_transmit ( uint8_t *tx_buf, uint16_t len_buf ) - Set data to transmit
+
+PRI uwb_start_transceiver()
+'' Start receiving or transmitig data
+    ' void uwb_start_transceiver ( void ) - Start receiving or transmitig data
+
+{{
+ -------------------------------------------------------------------------------------------------
+    Application Task - Checks if interrupt occured for previous set mode.
+    * TX mode: Transmit data and then set delay for 2 seconds.
+    * RX mode: Receive data and logs it.
+
+void application_task ( )
+{
+    dev_status = uwb_get_qint_pin_status(  );
+
+    if ( UWB_MODE_RX == dev_mode )
+    {
+        if ( dev_status )
+        {
+            //Reading transtimed data logs it and reseting to receive mode
+            uwb_set_mode( UWB_MODE_IDLE );
+            uwb_clear_status(  );
+            temp_len = uwb_get_transmit_len(  );
+            uwb_get_transmit( &transmit_data[ 0 ], temp_len );
+            mikrobus_logWrite( "Received data:", _LOG_TEXT );
+            mikrobus_logWrite( transmit_data, _LOG_LINE );
+            mikrobus_logWrite( " - Receive done - ", _LOG_LINE );
+            uwb_set_mode( UWB_MODE_RX );
+            uwb_start_transceiver(  );
+        }
+    }
+    else if ( UWB_MODE_TX == dev_mode )
+    {
+        if ( dev_status )
+        {
+            //Transmits data reseting to transmit mode and setts 2sec delay
+            mikrobus_logWrite( " - Transmit done - ", _LOG_LINE );
+            uwb_set_mode( UWB_MODE_IDLE );
+            uwb_clear_status(  );
+            uwb_set_transmit( &data_tx[ 0 ], 6 );
+            uwb_set_mode( UWB_MODE_TX );
+            uwb_start_transceiver(  );
+            Delay_ms( 2000 );
+        }
+    }
+}
+ -------------------------------------------------------------------------------------------------
+}}
+
+CON { license }
+{{
+
+ -------------------------------------------------------------------------------------------------
+  MIT License
+
+  Copyright (c) 2022 Iron Sheep Productions, LLC
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+ =================================================================================================
+}}
