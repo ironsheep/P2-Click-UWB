@@ -28,10 +28,18 @@ CON { fixed io pins }
 
 CON { click module io pins }
 
+    ' our Click module is on 16-31!
+    UWB_CLICK_PINGROUP = uwbRadio.PINS_P16_P31
 
+OBJ { the object being demo'd }
+
+    uwbRadio : "isp_uwb_click"
 
 PUB main()
 '' DEMO let's see what our radio hears!
+
+    ' tell object where the module is connected
+    uwbRadio.start(UWB_CLICK_PINGROUP)
 
 CON { license }
 {{
