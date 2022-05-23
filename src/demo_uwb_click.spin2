@@ -45,7 +45,8 @@ PUB main() | ok, deviceID, uniqMSB, uniqLSB
     else
         debug("* SPI started OK")
 
-        uwbRadio.resetDevice()
+        uwbRadio.uwb_set_mode(uwbRadio.UWB_MODE_IDLE)
+
         deviceID := uwbRadio.getDeviceId()
 
         uniqMSB, uniqLSB := uwbRadio.getUniqueId()

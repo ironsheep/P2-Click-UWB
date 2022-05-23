@@ -38,13 +38,13 @@ CON { Click Module offsets }
                │                             │
     Base + 07  │ (*) RST             INT (*) │  Base + 04
                │                             │
-    Base + 08  │ () CS            <-- RX  () │  Base + 03  (marked TX on Click modules)
+    Base + 08  │ (*) CS            <-- RX () │  Base + 03  (marked TX on Click modules)
                │                             │
-    Base + 09  │ () SCK  <--      --> TX  () │  Base + 02  (marked RX on Click modules)
+    Base + 09  │ (*) SCK  <--      --> TX () │  Base + 02  (marked RX on Click modules)
                │                             │
-    Base + 10  │ () MISO -->     --> SCL (*) │  Base + 01
+    Base + 10  │ (*) MISO -->     --> SCL () │  Base + 01
                │                             │
-    Base + 11  │ () MOSI <--     <-> SDA (*) │  Base + 00
+    Base + 11  │ (*) MOSI <--     <-> SDA () │  Base + 00
                │                             │
                │ (*) 3v3              5v0 () │
                │                             │
@@ -347,11 +347,16 @@ PUB start(eClickBasePin) : ok | legalBase
     ok := false
     if legalBase <> INVALID_PIN_BASE
         pinbase := legalBase                    ' record base pin number
+        ' configure inputs
+        pinfloat(pinbase + CLICK_OFST_INT)
+        'pinfloat(pinbase + CLICK_OFST_MOSI)
+        ' assert reset while starting up
+        pinlow(pinbase + CLICK_OFST_RST)
+        spi_master_deselect_device()
+        ok := spi.start(pinbase + CLICK_OFST_MISO, pinbase + CLICK_OFST_MOSI, pinbase + CLICK_OFST_SCK, 3_000)                     ' spi to UWB @ 3MHz (can run at 20MHz)
+        ' reset device
+        resetDevice()
 
-        pinfloat(pinbase + CLICK_OFST_INT)      ' assert reset while starting up
-        pinlow(pinbase + CLICK_OFST_RST)        ' assert reset while starting up
-        spi_master_deselect_device()            ' release CSb
-        ok := spi.start(pinbase + CLICK_OFST_MOSI, pinbase + CLICK_OFST_MISO, pinbase + CLICK_OFST_SCK, 3_000)                     ' spi to UWB @ 3MHz (can run at 20MHz)
 
 PUB stop()
 '' Stop the UWB Click SPI Object
@@ -377,9 +382,9 @@ PUB getDeviceId() : dvcID | workValue
 
 PUB getUniqueId() : uniqueIdMSB, uniqueIdLSB | LONG uniqBffr[2]
 '' Return the hardware unique ID (guid equiv.) - 8 bytes long
-    uwb_generic_read(UWB_SUB_NO, UWB_REG_DEV_ID, @uniqBffr, 8)
-    uniqueIdMSB := LONG [@uniqBffr][0]
-    uniqueIdLSB := LONG [@uniqBffr][1]
+    uwb_generic_read(UWB_SUB_NO, UWB_REG_EU_ID, @uniqBffr, 8)
+    uniqueIdMSB := LONG [@uniqBffr][1]
+    uniqueIdLSB := LONG [@uniqBffr][0]
 
     debug("uwb: getUniqueId() ", uhex_long(uniqueIdMSB), uhex_long(uniqueIdLSB), UHEX_BYTE_ARRAY(@uniqBffr, 8))
 
@@ -391,11 +396,23 @@ DAT { object addressing data }
     address_data BYTE 0[3]
     address_len BYTE 0
 
+PRI uwb_generic_read(offset, reg_adr, rx_buf, buf_len)
+'' Reading data from device
+    ' void uwb_generic_read (uint8_t reg_adr, uint16_t offset, uint8_t *rx_buf, uint16_t buf_len) - Reading data from device
+    address_len := prepAddress(READ_MASK, offset, reg_adr, @address_data)
+    debug("uwb: uwb_generic_read() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
+
+    spi_master_select_device()
+    spi_master_write(@address_data, address_len)
+    spi_master_read(rx_buf, buf_len)
+    spi_master_deselect_device()
+
+
 PRI uwb_generic_write(offset, reg_adr, tx_buf, buf_len)
 '' Writing data to device
     ' void uwb_generic_write (uwb_t *ctx, uint8_t reg_adr,  uint8_t *tx_buf, uint16_t buf_len) - Writing data to device
 
-    address_len := prepAddress(offset, reg_adr, @address_data)
+    address_len := prepAddress(WRITE_MASK, offset, reg_adr, @address_data)
     debug("uwb: uwb_generic_write() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
 
     spi_master_select_device()
@@ -406,22 +423,10 @@ PRI uwb_generic_write(offset, reg_adr, tx_buf, buf_len)
     waitms(10)    ' Delay_10ms()
 
 
-PRI uwb_generic_read(offset, reg_adr, rx_buf, buf_len)
-'' Reading data from device
-    ' void uwb_generic_read (uint8_t reg_adr, uint16_t offset, uint8_t *rx_buf, uint16_t buf_len) - Reading data from device
-    address_len := prepAddress(offset, reg_adr, @address_data)
-    debug("uwb: uwb_generic_read() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
-
-    spi_master_select_device()
-    spi_master_write(@address_data, address_len)
-    spi_master_read(rx_buf, buf_len)
-    spi_master_deselect_device()
-
-
-PRI prepAddress(offset, reg_adr, pAddr) : nFinalLen
+PRI prepAddress(opMask, offset, reg_adr, pAddr) : nFinalLen
 ' load address value based on request
     nFinalLen := 1
-    BYTE [pAddr][ 0 ] := WRITE_MASK | reg_adr
+    BYTE [pAddr][ 0 ] := opMask | reg_adr
 
     if offset <> UWB_SUB_NO
         BYTE [pAddr][ 0 ] |= SUB_MASK
@@ -434,7 +439,7 @@ PRI prepAddress(offset, reg_adr, pAddr) : nFinalLen
             nFinalLen += 2
 
 
-PRI uwb_set_mode(mode)
+PUB uwb_set_mode(mode)
 '' Setting device in one working mode
     ' void uwb_set_mode (uint8_t mode) - Setting device in one working mode
     case mode
@@ -667,7 +672,9 @@ PRI spi_master_write(pBffr, nBffrLen) | bytIdx
 PRI spi_master_read(pBffr, nBffrLen) | bytIdx
     ' clock-in N bytes of data
     repeat bytIdx from 0 to nBffrLen - 1
-        BYTE[pBffr][bytIdx] := spi.shiftin(spi.MSBFIRST, 8)
+        ' shiftout(mode, value, bits)
+        ' shiftio(mode, outval, bits) : inval
+        BYTE[pBffr][bytIdx] := spi.shiftio(spi.MSBFIRST, 0, 8)
     debug("uwb: spi_master_read() len=(", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
 
 CON { license }
