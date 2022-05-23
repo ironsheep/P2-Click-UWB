@@ -35,11 +35,22 @@ OBJ { the object being demo'd }
 
     uwbRadio : "isp_uwb_click"
 
-PUB main()
+PUB main() | ok, deviceID, uniqMSB, uniqLSB
 '' DEMO let's see what our radio hears!
 
     ' tell object where the module is connected
-    uwbRadio.start(UWB_CLICK_PINGROUP)
+    ok := uwbRadio.start(UWB_CLICK_PINGROUP)
+    if not ok
+        debug("* SPI FAILED to start")
+    else
+        debug("* SPI started OK")
+
+        uwbRadio.resetDevice()
+        deviceID := uwbRadio.getDeviceId()
+
+        uniqMSB, uniqLSB := uwbRadio.getUniqueId()
+
+        uwbRadio.stop()
 
 CON { license }
 {{

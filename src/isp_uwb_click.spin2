@@ -19,7 +19,11 @@ CON { Public Interface Constants }
     ' return value when user makes bad choice
     INVALID_PIN_BASE = -1
 
+
 OBJ { Objects / constants included by this object }
+
+  spi  : "jm_ez_spi"                                            '   smart pin mode 0 spi coms
+
 
 CON { Test PINs for LA measurement }
 
@@ -27,7 +31,7 @@ CON { Click Module offsets }
  {
 
     P2 Eval Click Adapter IO Assignments
-    * - used by MPU 9DOF board
+    * - used by UWB (Ultra Wide Band) board
 
                ┌─────────────────────────────┐
     Base + 06  │ [ ] AN              PWM [ ] │  Base + 05
@@ -49,24 +53,19 @@ CON { Click Module offsets }
 }
 
     ' specs for Click UWB board
-   CLICK_OFST_MOSI = 11    ' N/C  Mikroe pin 6 - SPI Data In
-   CLICK_OFST_MISO = 10    ' N/C  Mikroe pin 5  - SPI Data Out
-   CLICK_OFST_SCK = 9    ' N/C  Mikroe pin 4    - SPI Clock
-   CLICK_OFST_CS = 8    ' N/C  Mikroe pin 3    - SPI Chip Select
-   CLICK_OFST_RST = 7    ' N/C  Mikroe pin 2    - Reset
-   'CLICK_OFST_AN = 6    ' N/C  Mikroe pin 1
+   CLICK_OFST_MOSI = 11     ' Mikroe pin 6  - SPI Data - In
+   CLICK_OFST_MISO = 10     ' Mikroe pin 5  - SPI Data - Out
+   CLICK_OFST_SCK = 9       ' Mikroe pin 4  - SPI Clock - Out
+   CLICK_OFST_CS = 8        ' Mikroe pin 3  - SPI Chip Select - Out
+   CLICK_OFST_RST = 7       ' Mikroe pin 2  - Reset - Out
+   'CLICK_OFST_AN = 6       ' N/C  Mikroe pin 1
 
-   'CLICK_OFST_PWM = 5 ' N/C  Mikroe pin 16
-   CLICK_OFST_INT = 4   ' Mikroe pin 15
-   'CLICK_OFST_RX = 3 ' N/C  Mikroe pin 14
-   'CLICK_OFST_TX = 2 ' N/C  Mikroe pin 13
-   'CLICK_OFST_SCL = 1 ' N/C  Mikroe pin 12
-   'CLICK_OFST_SDA = 0 ' N/C  Mikroe pin 11
-
-OBJ { Objects Used }
-
-  spi  : "jm_ez_spi"                                            '   smart pin mode 0 spi coms
-
+   'CLICK_OFST_PWM = 5      ' N/C  Mikroe pin 16
+   CLICK_OFST_INT = 4       ' Mikroe pin 15 - Interrupt - In
+   'CLICK_OFST_RX = 3       ' N/C  Mikroe pin 14
+   'CLICK_OFST_TX = 2       ' N/C  Mikroe pin 13
+   'CLICK_OFST_SCL = 1      ' N/C  Mikroe pin 12
+   'CLICK_OFST_SDA = 0      ' N/C  Mikroe pin 11
 
 CON { UWB Constants }
 
@@ -333,7 +332,7 @@ DAT { object class data }
 
 
 PUB start(eClickBasePin) : ok | legalBase
-'' Specify motor control board connect location for this motor and start the driver
+'' Specify the eval board connect location for the UWB click and start SPI
 ' REF https://www.mikroe.com/uwb-click
    ' ensure we only use legal values
     legalBase := eClickBasePin
@@ -345,11 +344,47 @@ PUB start(eClickBasePin) : ok | legalBase
             legalBase := INVALID_PIN_BASE
 
     ' if legal base-pin then start cog
+    ok := false
     if legalBase <> INVALID_PIN_BASE
-        pinbase := legalBase        ' record base pin number
+        pinbase := legalBase                    ' record base pin number
 
-        spi_master_deselect_device()
-        spi.start(pinbase + CLICK_OFST_MOSI, pinbase + CLICK_OFST_MISO, pinbase + CLICK_OFST_SCK, 10_000)                     ' spi to flash @ 10MHz
+        pinfloat(pinbase + CLICK_OFST_INT)      ' assert reset while starting up
+        pinlow(pinbase + CLICK_OFST_RST)        ' assert reset while starting up
+        spi_master_deselect_device()            ' release CSb
+        ok := spi.start(pinbase + CLICK_OFST_MOSI, pinbase + CLICK_OFST_MISO, pinbase + CLICK_OFST_SCK, 3_000)                     ' spi to UWB @ 3MHz (can run at 20MHz)
+
+PUB stop()
+'' Stop the UWB Click SPI Object
+    spi.stop()
+
+PUB enableDevice()
+'' Enable the UWB Device (pull it out of reset)
+    pinh(pinbase + CLICK_OFST_RST)                                 ' de-assert reset
+
+PUB resetDevice()
+'' Reset the UWB device
+    pinl(pinbase + CLICK_OFST_RST)                                 ' assert reset
+    waitms(100)
+    pinh(pinbase + CLICK_OFST_RST)                                 ' de-assert reset
+    waitms(100)
+
+PUB getDeviceId() : dvcID | workValue
+'' Read and return value from the device-id register of Decawave's DW1000 Ultra-Wideband (UWB) transceiver
+    ' Read value into our 4-byte long
+    uwb_generic_read(UWB_SUB_NO, UWB_REG_DEV_ID, @workValue, 4)
+    dvcID := workValue
+    debug("uwb: getDeviceId() ", uhex_long(dvcID))
+
+PUB getUniqueId() : uniqueIdMSB, uniqueIdLSB | LONG uniqBffr[2]
+'' Return the hardware unique ID (guid equiv.) - 8 bytes long
+    uwb_generic_read(UWB_SUB_NO, UWB_REG_DEV_ID, @uniqBffr, 8)
+    uniqueIdMSB := LONG [@uniqBffr][0]
+    uniqueIdLSB := LONG [@uniqBffr][1]
+
+    debug("uwb: getUniqueId() ", uhex_long(uniqueIdMSB), uhex_long(uniqueIdLSB), UHEX_BYTE_ARRAY(@uniqBffr, 8))
+
+
+CON { --------------------------- }
 
 DAT { object addressing data }
 
@@ -359,18 +394,9 @@ DAT { object addressing data }
 PRI uwb_generic_write(offset, reg_adr, tx_buf, buf_len)
 '' Writing data to device
     ' void uwb_generic_write (uwb_t *ctx, uint8_t reg_adr,  uint8_t *tx_buf, uint16_t buf_len) - Writing data to device
-    address_len := 1
-    BYTE [@address_data][ 0 ] := WRITE_MASK | reg_adr
 
-    if (UWB_SUB_NO <> offset)
-        BYTE [@address_data][ 0 ] |= SUB_MASK
-        if (offset < 128)
-            BYTE [@address_data][ 1 ] :=  offset & $7F
-            address_len++
-        else
-            BYTE [@address_data][ 1 ] := SUB_EXT_MASK | (offset & $FF)
-            BYTE [@address_data][ 2 ] := ((offset >> 8) & $FF)
-            address_len += 2
+    address_len := prepAddress(offset, reg_adr, @address_data)
+    debug("uwb: uwb_generic_write() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
 
     spi_master_select_device()
     spi_master_write(@address_data, address_len)
@@ -383,23 +409,29 @@ PRI uwb_generic_write(offset, reg_adr, tx_buf, buf_len)
 PRI uwb_generic_read(offset, reg_adr, rx_buf, buf_len)
 '' Reading data from device
     ' void uwb_generic_read (uint8_t reg_adr, uint16_t offset, uint8_t *rx_buf, uint16_t buf_len) - Reading data from device
-    address_len := 1
-    BYTE [@address_data][ 0 ] := READ_MASK | reg_adr
-    if UWB_SUB_NO <> offset
-        BYTE [@address_data][ 0 ] |= SUB_MASK
-        if (offset < 128)
-            BYTE [@address_data][ 1 ] := offset & $7F
-            address_len++
-
-        else
-            BYTE [@address_data][ 1 ] := SUB_EXT_MASK | (offset & $FF)
-            BYTE [@address_data][ 2 ] := ((offset >> 8) & $FF)
-            address_len += 2
+    address_len := prepAddress(offset, reg_adr, @address_data)
+    debug("uwb: uwb_generic_read() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
 
     spi_master_select_device()
     spi_master_write(@address_data, address_len)
     spi_master_read(rx_buf, buf_len)
     spi_master_deselect_device()
+
+
+PRI prepAddress(offset, reg_adr, pAddr) : nFinalLen
+' load address value based on request
+    nFinalLen := 1
+    BYTE [pAddr][ 0 ] := WRITE_MASK | reg_adr
+
+    if offset <> UWB_SUB_NO
+        BYTE [pAddr][ 0 ] |= SUB_MASK
+        if (offset < 128)
+            BYTE [pAddr][ 1 ] :=  offset & $7F
+            nFinalLen++
+        else
+            BYTE [pAddr][ 1 ] := SUB_EXT_MASK | (offset & $FF)
+            BYTE [pAddr][ 2 ] := ((offset >> 8) & $FF)
+            nFinalLen += 2
 
 
 PRI uwb_set_mode(mode)
@@ -415,6 +447,7 @@ PRI uwb_set_mode(mode)
         UWB_MODE_TX:
             uwb_tune_config()
             uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_LOW)
+
 
 PRI uwb_get_transmit()
 '' Get received data
@@ -477,7 +510,7 @@ CON { -- PRIVATE Utility Methods -- }
 PRI uwb_tune_config()   ' ctx was passed but NOT needed?
 
 PRI uwb_reg_data_len(reg_adr) : nBytes
-
+' Return the number of bytes associated with the given register
     case reg_adr
         UWB_REG_DEV_ID:
             nBytes := 4
@@ -558,6 +591,10 @@ PRI uwb_reg_data_len(reg_adr) : nBytes
         other:
             nBytes := UWB_DEV_ERROR
 
+    if nBytes == UWB_DEV_ERROR
+        debug("* uwb_reg_data_len() ERROR: unknown dvc reg: ", uhex_byte_(reg_adr), "!")
+
+
 DAT { uwb_set_bit() work areas }
 
      reg_data byte 0[1024]
@@ -566,7 +603,6 @@ PRI uwb_set_bit (reg_adr, bit_num, bit_state) | data_len, byte_num, temp_bit
     ' set bit in UWB device register
     data_len := uwb_reg_data_len(reg_adr)
     if UWB_DEV_ERROR == data_len
-        debug("* uwb_set_bit() ERROR: missing device!")
         return
 
     byte_num := bit_num / 8
@@ -589,23 +625,50 @@ PRI uwb_set_bit (reg_adr, bit_num, bit_state) | data_len, byte_num, temp_bit
     uwb_generic_write(UWB_SUB_NO, reg_adr, @reg_data, data_len)
 
 
+PRI uwb_get_bit(ctx, reg_adr, bit_num) : nbit | data_len, byte_num, temp_bit, temp_mask
+    ' get bit from UWB device register - return 0,1, or UWB_DEV_ERROR
+    data_len := uwb_reg_data_len(reg_adr)
+
+    if data_len == UWB_DEV_ERROR
+        return UWB_DEV_ERROR
+
+    uwb_generic_read(UWB_SUB_NO, reg_adr, @reg_data, data_len)
+
+    byte_num := bit_num / 8
+    if(byte_num > data_len)
+        return UWB_DEV_ERROR
+
+    if(0 <> byte_num)
+        temp_bit := bit_num // 8
+    else
+        temp_bit := bit_num
+
+    temp_mask := reg_data[ byte_num ] >> temp_bit
+    temp_mask &= $01
+
+    return temp_mask
+
+
+
 PRI spi_master_deselect_device()
     ' Deselect the click SPI device
-    pinh(pinbase + CLICK_OFST_CS)                                 ' deselect UWB Click
+    pinhigh(pinbase + CLICK_OFST_CS)                                ' deselect UWB Click
 
 PRI spi_master_select_device()
     ' Select the click SPI device
-    pinl(pinbase + CLICK_OFST_CS)                                 ' select UWB Click
+    pinlow(pinbase + CLICK_OFST_CS)                                 ' select UWB Click
 
 PRI spi_master_write(pBffr, nBffrLen) | bytIdx
     ' clock-out N bytes of data
+    debug("uwb: spi_master_write() len=(", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
     repeat bytIdx from 0 to nBffrLen - 1
-        spi.shiftout(spi.MSBFIRST, byte[pBffr][bytIdx], 8)
+        spi.shiftout(spi.MSBFIRST, BYTE[pBffr][bytIdx], 8)
 
 PRI spi_master_read(pBffr, nBffrLen) | bytIdx
     ' clock-in N bytes of data
     repeat bytIdx from 0 to nBffrLen - 1
-        byte[pBffr][bytIdx] := spi.shiftin(spi.MSBFIRST, 8)
+        BYTE[pBffr][bytIdx] := spi.shiftin(spi.MSBFIRST, 8)
+    debug("uwb: spi_master_read() len=(", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
 
 CON { license }
 {{
