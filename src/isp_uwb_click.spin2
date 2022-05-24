@@ -3,7 +3,7 @@
 ''   File....... isp_uwb_click.spin2
 ''   Purpose.... Interface to the Mikroe UWB Click module
 ''   Authors.... Stephen M Moraco
-''               -- Copyright (c) 2022 Iron Sheep Productions, LLC
+''               -- Copyright(c) 2022 Iron Sheep Productions, LLC
 ''               -- see below for terms of use
 ''   E-mail..... stephen@ironsheep.biz
 ''   Started.... Apr 2022
@@ -13,8 +13,8 @@
 
 CON { Public Interface Constants }
 
-    '  ID where the P2 Eval Motor Board is plugged in (Enum)
-    '    (Names of supported PinGroups)
+    '  ID where the P2 Eval Motor Board is plugged in(Enum)
+    '   (Names of supported PinGroups)
     #0[16], PINS_P0_P15, PINS_P16_P31, PINS_P32_P47
     ' return value when user makes bad choice
     INVALID_PIN_BASE = -1
@@ -31,24 +31,24 @@ CON { Click Module offsets }
  {
 
     P2 Eval Click Adapter IO Assignments
-    * - used by UWB (Ultra Wide Band) board
+    * - used by UWB(Ultra Wide Band) board
 
                ┌─────────────────────────────┐
     Base + 06  │ [ ] AN              PWM [ ] │  Base + 05
                │                             │
-    Base + 07  │ (*) RST             INT (*) │  Base + 04
+    Base + 07  │(*) RST             INT(*) │  Base + 04
                │                             │
-    Base + 08  │ (*) CS            <-- RX () │  Base + 03  (marked TX on Click modules)
+    Base + 08  │(*) CS            <-- RX() │  Base + 03 (marked TX on Click modules)
                │                             │
-    Base + 09  │ (*) SCK  <--      --> TX () │  Base + 02  (marked RX on Click modules)
+    Base + 09  │(*) SCK  <--      --> TX() │  Base + 02 (marked RX on Click modules)
                │                             │
-    Base + 10  │ (*) MISO -->     --> SCL () │  Base + 01
+    Base + 10  │(*) MISO -->     --> SCL() │  Base + 01
                │                             │
-    Base + 11  │ (*) MOSI <--     <-> SDA () │  Base + 00
+    Base + 11  │(*) MOSI <--     <-> SDA() │  Base + 00
                │                             │
-               │ (*) 3v3              5v0 () │
+               │(*) 3v3              5v0() │
                │                             │
-               │ (*) GND             GND (*) │
+               │(*) GND             GND(*) │
                └─────────────────────────────/
 }
 
@@ -321,6 +321,28 @@ CON { UWB Constants }
     LEN_FS_PLLTUNE                   = 1
     LEN_FS_XTALT                     = 1
 
+    ' SPI Communication Freq w/UWB Board
+    UWB_SPI_CLK_MHZ = 20_000
+
+DAT { UWB Device Config }
+
+    ' Structure for device configuration(orig: uwb_dev_t)
+    dev_mode        BYTE    UWB_MODE_IDLE
+    extended_frame  BYTE    UWB_FRAME_LEN_NORMAL
+    pac_size        BYTE    UWB_PAC_SIZE_8
+    pulse_freq      BYTE    UWB_PULSTE_FREQ_16MHZ
+    data_rate       BYTE    UWB_DATA_RATE_850KBSPS
+    preamble_len    BYTE    UWB_PREAMBLE_LEN_256
+    preamble_code   BYTE    UWB_PREAMBLE_CODE_3
+    channel         BYTE    UWB_CHANNEL_5
+    antenna_delay   WORD    16384
+    antenna_calib   BYTE    0
+    smart_power     BYTE    1
+    frame_check     BYTE    1
+    permanent_rx    BYTE    1
+    debounce_clk_en BYTE    0
+
+
 
 PUB null()
 
@@ -353,7 +375,7 @@ PUB start(eClickBasePin) : ok | legalBase
         ' assert reset while starting up
         pinlow(pinbase + CLICK_OFST_RST)
         spi_master_deselect_device()
-        ok := spi.start(pinbase + CLICK_OFST_MISO, pinbase + CLICK_OFST_MOSI, pinbase + CLICK_OFST_SCK, 3_000)                     ' spi to UWB @ 3MHz (can run at 20MHz)
+        ok := spi.start(pinbase + CLICK_OFST_MISO, pinbase + CLICK_OFST_MOSI, pinbase + CLICK_OFST_SCK, UWB_SPI_CLK_MHZ)                     ' spi to UWB @ 3MHz(can run at 20MHz)
         ' reset device
         resetDevice()
 
@@ -363,7 +385,7 @@ PUB stop()
     spi.stop()
 
 PUB enableDevice()
-'' Enable the UWB Device (pull it out of reset)
+'' Enable the UWB Device(pull it out of reset)
     pinh(pinbase + CLICK_OFST_RST)                                 ' de-assert reset
 
 PUB resetDevice()
@@ -374,19 +396,109 @@ PUB resetDevice()
     waitms(100)
 
 PUB getDeviceId() : dvcID | workValue
-'' Read and return value from the device-id register of Decawave's DW1000 Ultra-Wideband (UWB) transceiver
+'' Read and return value from the device-id register of Decawave's DW1000 Ultra-Wideband(UWB) transceiver
     ' Read value into our 4-byte long
     uwb_generic_read(UWB_SUB_NO, UWB_REG_DEV_ID, @workValue, 4)
     dvcID := workValue
     debug("uwb: getDeviceId() ", uhex_long(dvcID))
 
 PUB getUniqueId() : uniqueIdMSB, uniqueIdLSB | LONG uniqBffr[2]
-'' Return the hardware unique ID (guid equiv.) - 8 bytes long
+'' Return the hardware unique ID(guid equiv.) - 8 bytes long
     uwb_generic_read(UWB_SUB_NO, UWB_REG_EU_ID, @uniqBffr, 8)
     uniqueIdMSB := LONG [@uniqBffr][1]
     uniqueIdLSB := LONG [@uniqBffr][0]
 
     debug("uwb: getUniqueId() ", uhex_long(uniqueIdMSB), uhex_long(uniqueIdLSB), UHEX_BYTE_ARRAY(@uniqBffr, 8))
+
+PUB uwb_set_mode(mode) : status
+'' Set device working mode to [UWB_MODE_IDLE, UWB_MODE_RX, or UWB_MODE_TX]
+''  Returns UWB_OK, or UWB_DEV_ERROR if invalid request
+    ' void uwb_set_mode(uint8_t mode) - Setting device in one working mode
+    status := UWB_OK
+    case mode
+        UWB_MODE_IDLE:
+            uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_HIGH)
+        UWB_MODE_RX:
+            uwb_tune_config()
+            uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_LOW)
+            uwb_set_bit(UWB_REG_SYS_CFG, 29, UWB_HIGH)
+        UWB_MODE_TX:
+            uwb_tune_config()
+            uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_LOW)
+        other:
+            status := UWB_DEV_ERROR
+
+    if status == UWB_OK
+        ' record latest value in device configuration data
+        dev_mode := mode
+
+PUB uwb_set_dev_adr_n_network_id(dev_adr,  net_id) | temp_id, id_len
+'' Configure Addr and network ID
+    BYTE [@temp_id][ 0 ] := (dev_adr >> 8) & $FF
+    BYTE [@temp_id][ 1 ] := dev_adr & $FF
+    BYTE [@temp_id][ 2 ] := (net_id >> 8) & $FF
+    BYTE [@temp_id][ 3 ] := net_id & $FF
+
+    id_len := uwb_reg_data_len(UWB_REG_PAN_ID)
+    uwb_generic_write(UWB_SUB_NO, UWB_REG_PAN_ID, temp_id, id_len)
+
+
+PUB uwb_set_data_rate(rate) : status | BYTE sfd_len, BYTE tx_ctrl[5], WORD adr_len
+'' Set DataRate to [UWB_DATA_RATE_110KBSPS, UWB_DATA_RATE_850KBSPS, or UWB_DATA_RATE_6800KBSPS]
+''  Returns UWB_OK, or UWB_DEV_ERROR if invalid request
+    status := UWB_OK
+    case rate
+        UWB_DATA_RATE_110KBSPS:
+            uwb_set_bit(UWB_REG_SYS_CFG, 22, UWB_HIGH)      ' rxm110k
+            uwb_set_bit(UWB_REG_CHN_CTRL, 17, UWB_HIGH)     ' dwsfd
+            uwb_set_bit(UWB_REG_CHN_CTRL, 20, UWB_LOW)      ' tnssfd
+            uwb_set_bit(UWB_REG_CHN_CTRL, 21, UWB_LOW)      ' rnssfd
+            sfd_len := $40
+        UWB_DATA_RATE_850KBSPS:
+            uwb_set_bit(UWB_REG_SYS_CFG, 22, UWB_LOW)       ' rxm110k
+            uwb_set_bit(UWB_REG_CHN_CTRL, 17, UWB_HIGH)     ' dwsfd
+            uwb_set_bit(UWB_REG_CHN_CTRL, 20, UWB_HIGH)     ' tnssfd
+            uwb_set_bit(UWB_REG_CHN_CTRL, 21, UWB_HIGH)     ' rnssfd
+            sfd_len := $10
+        UWB_DATA_RATE_6800KBSPS:
+            uwb_set_bit(UWB_REG_SYS_CFG, 22, UWB_LOW)       ' rxm110k
+            uwb_set_bit(UWB_REG_CHN_CTRL, 17, UWB_LOW)      ' dwsfd
+            uwb_set_bit(UWB_REG_CHN_CTRL, 20, UWB_LOW)      ' tnssfd
+            uwb_set_bit(UWB_REG_CHN_CTRL, 21, UWB_LOW)      ' rnssfd
+            sfd_len := $08
+        other:
+            status := UWB_DEV_ERROR
+
+    if status == UWB_OK
+        adr_len := uwb_reg_data_len(UWB_REG_SYS_TX_CTRL)
+
+        uwb_generic_read(UWB_SUB_NO, UWB_REG_SYS_TX_CTRL, @tx_ctrl, adr_len)
+        BYTE [@tx_ctrl][ 1 ] &= $83
+        BYTE [@tx_ctrl][ 1 ] |= (rate << 5) & $FF
+        uwb_generic_write(UWB_SUB_NO, UWB_REG_SYS_TX_CTRL, @tx_ctrl, adr_len)
+        uwb_generic_write(UWB_SUB_NO, UWB_REG_SFD, @sfd_len, 1)
+        ' record latest value in device configuration data
+        data_rate := rate
+
+
+PUB uwb_set_pulse_freq(freq) | tx_len, chn_len, chn_ctrl, BYTE tx_ctrl[5]
+'' Set UWB Pulse Freq
+    tx_len := uwb_reg_data_len(UWB_REG_SYS_TX_CTRL)
+    chn_len := uwb_reg_data_len(UWB_REG_CHN_CTRL)
+
+    uwb_generic_read(UWB_SUB_NO, UWB_REG_SYS_TX_CTRL, @tx_ctrl, tx_len)
+    uwb_generic_read(UWB_SUB_NO, UWB_REG_CHN_CTRL, @chn_ctrl, chn_len)
+
+    freq &= $03
+    BYTE [@tx_ctrl][ 2 ] &= $FC
+    BYTE [@tx_ctrl][ 2 ] |= freq & $FF
+    BYTE [@chn_ctrl][ 2 ] &= $F3
+    BYTE [@chn_ctrl][ 2 ] |= (freq << 2) & $FF
+
+    uwb_generic_write(UWB_SUB_NO, UWB_REG_SYS_TX_CTRL, @tx_ctrl, tx_len)
+    uwb_generic_write(UWB_SUB_NO, UWB_REG_CHN_CTRL, @chn_ctrl, chn_len)
+    ' record latest value in device configuration data
+    pulse_freq := freq
 
 
 CON { --------------------------- }
@@ -398,7 +510,7 @@ DAT { object addressing data }
 
 PRI uwb_generic_read(offset, reg_adr, rx_buf, buf_len)
 '' Reading data from device
-    ' void uwb_generic_read (uint8_t reg_adr, uint16_t offset, uint8_t *rx_buf, uint16_t buf_len) - Reading data from device
+    ' void uwb_generic_read(uint8_t reg_adr, uint16_t offset, uint8_t *rx_buf, uint16_t buf_len) - Reading data from device
     address_len := prepAddress(READ_MASK, offset, reg_adr, @address_data)
     debug("uwb: uwb_generic_read() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
 
@@ -410,7 +522,7 @@ PRI uwb_generic_read(offset, reg_adr, rx_buf, buf_len)
 
 PRI uwb_generic_write(offset, reg_adr, tx_buf, buf_len)
 '' Writing data to device
-    ' void uwb_generic_write (uwb_t *ctx, uint8_t reg_adr,  uint8_t *tx_buf, uint16_t buf_len) - Writing data to device
+    ' void uwb_generic_write(uwb_t *ctx, uint8_t reg_adr,  uint8_t *tx_buf, uint16_t buf_len) - Writing data to device
 
     address_len := prepAddress(WRITE_MASK, offset, reg_adr, @address_data)
     debug("uwb: uwb_generic_write() ofs=", udec_byte_(offset), ", reg=", uhex_byte_(reg_adr))
@@ -430,41 +542,27 @@ PRI prepAddress(opMask, offset, reg_adr, pAddr) : nFinalLen
 
     if offset <> UWB_SUB_NO
         BYTE [pAddr][ 0 ] |= SUB_MASK
-        if (offset < 128)
+        if(offset < 128)
             BYTE [pAddr][ 1 ] :=  offset & $7F
             nFinalLen++
         else
-            BYTE [pAddr][ 1 ] := SUB_EXT_MASK | (offset & $FF)
+            BYTE [pAddr][ 1 ] := SUB_EXT_MASK |(offset & $FF)
             BYTE [pAddr][ 2 ] := ((offset >> 8) & $FF)
             nFinalLen += 2
 
 
-PUB uwb_set_mode(mode)
-'' Setting device in one working mode
-    ' void uwb_set_mode (uint8_t mode) - Setting device in one working mode
-    case mode
-        UWB_MODE_IDLE:
-            uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_HIGH)
-        UWB_MODE_RX:
-            uwb_tune_config()
-            uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_LOW)
-            uwb_set_bit(UWB_REG_SYS_CFG, 29, UWB_HIGH)
-        UWB_MODE_TX:
-            uwb_tune_config()
-            uwb_set_bit(UWB_REG_SYS_CTRL, 6, UWB_LOW)
-
 
 PRI uwb_get_transmit()
 '' Get received data
-    ' void uwb_get_transmit (uint8_t *rx_buf, uint16_t len_buf) - Get received data
+    ' void uwb_get_transmit(uint8_t *rx_buf, uint16_t len_buf) - Get received data
 
 PRI uwb_set_transmit()
 '' Set data to transmit
-    ' void uwb_set_transmit (uint8_t *tx_buf, uint16_t len_buf) - Set data to transmit
+    ' void uwb_set_transmit(uint8_t *tx_buf, uint16_t len_buf) - Set data to transmit
 
 PRI uwb_start_transceiver()
 '' Start receiving or transmitig data
-    ' void uwb_start_transceiver (void) - Start receiving or transmitig data
+    ' void uwb_start_transceiver(void) - Start receiving or transmitig data
 
 {{}
  -------------------------------------------------------------------------------------------------
@@ -472,13 +570,13 @@ PRI uwb_start_transceiver()
     * TX mode: Transmit data and then set delay for 2 seconds.
     * RX mode: Receive data and logs it.
 
-void application_task ()
+void application_task()
 {
     dev_status = uwb_get_qint_pin_status()
 
-    if (UWB_MODE_RX == dev_mode)
+    if(UWB_MODE_RX == dev_mode)
     {
-        if (dev_status)
+        if(dev_status)
         {
             //Reading transtimed data logs it and reseting to receive mode
             uwb_set_mode(UWB_MODE_IDLE)
@@ -492,9 +590,9 @@ void application_task ()
             uwb_start_transceiver()
         }
     }
-    else if (UWB_MODE_TX == dev_mode)
+    else if(UWB_MODE_TX == dev_mode)
     {
-        if (dev_status)
+        if(dev_status)
         {
             //Transmits data reseting to transmit mode and setts 2sec delay
             mikrobus_logWrite(" - Transmit done - ", _LOG_LINE)
@@ -604,25 +702,25 @@ DAT { uwb_set_bit() work areas }
 
      reg_data byte 0[1024]
 
-PRI uwb_set_bit (reg_adr, bit_num, bit_state) | data_len, byte_num, temp_bit
+PRI uwb_set_bit(reg_adr, bit_num, bit_state) | data_len, byte_num, temp_bit
     ' set bit in UWB device register
     data_len := uwb_reg_data_len(reg_adr)
     if UWB_DEV_ERROR == data_len
         return
 
     byte_num := bit_num / 8
-    if (byte_num > data_len)
-        debug("* uwb_set_bit() ERROR: BYTE #", udec_(byte_num), " not in register (", udec_(data_len), ") bytes")
+    if(byte_num > data_len)
+        debug("* uwb_set_bit() ERROR: BYTE #", udec_(byte_num), " not in register(", udec_(data_len), ") bytes")
         return
 
-    if (0 <> byte_num)
+    if(0 <> byte_num)
         temp_bit := bit_num // 8
     else
         temp_bit := bit_num
 
     uwb_generic_read(UWB_SUB_NO, reg_adr, @reg_data, data_len)
 
-    if (bit_state)
+    if(bit_state)
         BYTE [@reg_data][byte_num] |= (1 << temp_bit)
     else
         BYTE [@reg_data][byte_num]  &= !(1 << bit_num)
@@ -665,7 +763,7 @@ PRI spi_master_select_device()
 
 PRI spi_master_write(pBffr, nBffrLen) | bytIdx
     ' clock-out N bytes of data
-    debug("uwb: spi_master_write() len=(", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
+    debug("uwb: spi_master_write() len= (", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
     repeat bytIdx from 0 to nBffrLen - 1
         spi.shiftout(spi.MSBFIRST, BYTE[pBffr][bytIdx], 8)
 
@@ -675,7 +773,7 @@ PRI spi_master_read(pBffr, nBffrLen) | bytIdx
         ' shiftout(mode, value, bits)
         ' shiftio(mode, outval, bits) : inval
         BYTE[pBffr][bytIdx] := spi.shiftio(spi.MSBFIRST, 0, 8)
-    debug("uwb: spi_master_read() len=(", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
+    debug("uwb: spi_master_read() len= (", udec_(nBffrLen), ") ", UHEX_BYTE_ARRAY(pBffr, nBffrLen))
 
 CON { license }
 {{
@@ -683,10 +781,10 @@ CON { license }
  -------------------------------------------------------------------------------------------------
   MIT License
 
-  Copyright (c) 2022 Iron Sheep Productions, LLC
+  Copyright(c) 2022 Iron Sheep Productions, LLC
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to deal
+  of this software and associated documentation files(the "Software"), to deal
   in the Software without restriction, including without limitation the rights
   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
   copies of the Software, and to permit persons to whom the Software is
