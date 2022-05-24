@@ -53,6 +53,42 @@ PUB main() | ok, deviceID, uniqMSB, uniqLSB
 
         uwbRadio.stop()
 
+DAT { demo test data }
+
+    dev_mode        BYTE    uwbRadio.UWB_MODE_TX
+    data_tx         BYTE    "MikroE",0              ' Transmit buffer
+    temp_len        BYTE    0                       ' Transmit length read var
+    transmit_data   BYTE    0[256]                  ' Recieved data buffer
+    didInterrupt    BYTE    0                       ' interrupt status var
+
+PRI application_task()
+    didInterrupt := uwbRadio.uwb_get_qint_pin_status()
+
+    if uwbRadio.getDeviceMode() == uwbRadio.UWB_MODE_RX
+        if didInterrupt
+            ' Reading transtimed data logs it and resetting to receive mode
+            uwbRadio.uwb_set_mode(uwbRadio.UWB_MODE_IDLE)
+            uwbRadio.uwb_clear_status()
+            temp_len := uwbRadio.uwb_get_transmit_len()
+            uwbRadio.uwb_get_transmit(@transmit_data[ 0 ], temp_len)
+            'mikrobus_logWrite("Received data:", _LOG_TEXT)
+            'mikrobus_logWrite(transmit_data, _LOG_LINE)
+            'mikrobus_logWrite(" - Receive done - ", _LOG_LINE)
+            uwbRadio.uwb_set_mode(uwbRadio.UWB_MODE_RX)
+            uwbRadio.uwb_start_transceiver()
+    elseif uwbRadio.getDeviceMode() == uwbRadio.UWB_MODE_TX
+        if didInterrupt
+            ' Transmits data resetting to transmit mode and sets 2sec delay
+            'mikrobus_logWrite(" - Transmit done - ", _LOG_LINE)
+            uwbRadio.uwb_set_mode(uwbRadio.UWB_MODE_IDLE)
+            uwbRadio.uwb_clear_status()
+            uwbRadio.uwb_set_transmit(@data_tx[ 0 ], 6)
+            uwbRadio.uwb_set_mode(uwbRadio.UWB_MODE_TX)
+            uwbRadio.uwb_start_transceiver()
+            waitms(2000)
+
+
+
 CON { license }
 {{
 
